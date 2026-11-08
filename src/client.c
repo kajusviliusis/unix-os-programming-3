@@ -153,6 +153,13 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // shutdown baigia siuntima, bet leidzia dar gauti serverio atsakyma.
+    if (shutdown(server_socket, SHUT_WR) == -1) {
+        perror("shutdown");
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
     char response[BUFFER_SIZE];
     ssize_t response_length = receive_line(server_socket, response, sizeof(response));
     if (response_length == -1) {
