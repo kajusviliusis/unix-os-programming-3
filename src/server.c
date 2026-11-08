@@ -1,11 +1,65 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-enum { LISTEN_BACKLOG = 5, MAX_PORT = 65535 };
+enum { LISTEN_BACKLOG = 5, MAX_PORT = 65535, BUFFER_SIZE = 1024 };
+
+// TCP send gali perduoti tik dali duomenu, todel siunciame iki galo.
+static int send_all(int socket_fd, const char *data, size_t length)
+{
+    size_t sent = 0;
+    while (sent < length) {
+        ssize_t count = send(socket_fd, data + sent, length - sent, 0);
+        if (count == -1) {
+            // EINTR reiskia, kad kvietima pertrauke signalas, bandome dar karta.
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("send");
+            return -1;
+        }
+        if (count == 0) {
+            fputs("Connection closed while sending.\n", stderr);
+            return -1;
+        }
+        sent += (size_t)count;
+    }
+    return 0;
+}
+
+static ssize_t receive_line(int socket_fd, char *buffer, size_t capacity)
+{
+    size_t used = 0;
+    while (used < capacity) {
+        // recv gali grazinti tik dali eilutes, todel laukiama naujos eilutes zenklo.
+        ssize_t count = recv(socket_fd, buffer + used, capacity - used, 0);
+        if (count == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("recv");
+            return -1;
+        }
+        if (count == 0) {
+            fputs("Client disconnected before sending a full line.\n", stderr);
+            return -1;
+        }
+
+        char *newline = memchr(buffer + used, '\n', (size_t)count);
+        used += (size_t)count;
+        if (newline != NULL) {
+            return newline - buffer + 1;
+        }
+    }
+
+    fputs("Message is too long.\n", stderr);
+    return -1;
+}
 
 int main(int argc, char *argv[])
 {
@@ -62,6 +116,26 @@ int main(int argc, char *argv[])
     }
 
     puts("Client connected.");
+    char message[BUFFER_SIZE];
+    ssize_t message_length = receive_line(client_socket, message, sizeof(message));
+    if (message_length == -1) {
+        close(client_socket);
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
+    fputs("Received: ", stdout);
+    // recv neprideda nulinio simbolio todel naudojame gauta baitu skaiciu
+    fwrite(message, 1, (size_t)message_length, stdout);
+
+    const char acknowledgment[] = "Message received\n";
+    // Patvirtinimas siunciamas tuo paciu kliento socket
+    if (send_all(client_socket, acknowledgment, sizeof(acknowledgment) - 1) == -1) {
+        close(client_socket);
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
     close(client_socket);
     close(server_socket);
     return EXIT_SUCCESS;
