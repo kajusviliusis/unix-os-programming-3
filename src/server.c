@@ -1,3 +1,5 @@
+#include "socket_utils.h"
+
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -9,7 +11,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-enum { LISTEN_BACKLOG = 5, MAX_PORT = 65535, BUFFER_SIZE = 1024, MAX_CLIENTS = 10 };
+enum { LISTEN_BACKLOG = 5, BUFFER_SIZE = 1024, MAX_CLIENTS = 10 };
 
 // saugomas kiekvieno kliento socket ir jo gautos zinutes duomenys.
 struct client {
@@ -17,29 +19,6 @@ struct client {
     char buffer[BUFFER_SIZE];
     size_t length;
 };
-
-// TCP send gali perduoti tik dali duomenu todel siunciame iki galo.
-static int send_all(int socket_fd, const char *data, size_t length)
-{
-    size_t sent = 0;
-    while (sent < length) {
-        ssize_t count = send(socket_fd, data + sent, length - sent, 0);
-        if (count == -1) {
-            // EINTR reiskia, kad kvietima pertrauke signalas, bandome dar karta.
-            if (errno == EINTR) {
-                continue;
-            }
-            perror("send");
-            return -1;
-        }
-        if (count == 0) {
-            fputs("Connection closed while sending.\n", stderr);
-            return -1;
-        }
-        sent += (size_t)count;
-    }
-    return 0;
-}
 
 static int handle_client(struct client *client)
 {
@@ -87,13 +66,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    char *end;
-    long port = strtol(argv[1], &end, 10);
-    if (argv[1][0] < '0' || argv[1][0] > '9' || *end != '\0' ||
-        port < 1 || port > MAX_PORT) {
+    if (!is_valid_port(argv[1])) {
         fprintf(stderr, "Invalid port: enter an integer from 1 to 65535.\n");
         return EXIT_FAILURE;
     }
+    long port = strtol(argv[1], NULL, 10);
 
     // sukuriamas TCP socket naudojant IPv4
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);

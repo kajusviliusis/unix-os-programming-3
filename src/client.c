@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200112L
 
+#include "socket_utils.h"
+
 #include <errno.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -8,30 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-enum { BUFFER_SIZE = 1024, MAX_PORT = 65535 };
-
-// TCP send gali perduoti tik dali duomenu todel siunciame iki galo.
-static int send_all(int socket_fd, const char *data, size_t length)
-{
-    size_t sent = 0;
-    while (sent < length) {
-        ssize_t count = send(socket_fd, data + sent, length - sent, 0);
-        if (count == -1) {
-            // EINTR reiskia, kad kvietima pertrauke signalas, bandome dar karta.
-            if (errno == EINTR) {
-                continue;
-            }
-            perror("send");
-            return -1;
-        }
-        if (count == 0) {
-            fputs("Connection closed while sending.\n", stderr);
-            return -1;
-        }
-        sent += (size_t)count;
-    }
-    return 0;
-}
+enum { BUFFER_SIZE = 1024 };
 
 static ssize_t receive_line(int socket_fd, char *buffer, size_t capacity)
 {
@@ -69,10 +48,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    char *end;
-    long port = strtol(argv[2], &end, 10);
-    if (argv[2][0] < '0' || argv[2][0] > '9' || *end != '\0' ||
-        port < 1 || port > MAX_PORT) {
+    if (!is_valid_port(argv[2])) {
         fputs("Invalid port: enter an integer from 1 to 65535.\n", stderr);
         return EXIT_FAILURE;
     }
