@@ -107,6 +107,15 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // SO_REUSEADDR leidzia greitai vel paleisti serveri tuo paciu prievadu.
+    int reuse_address = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse_address,
+                   sizeof(reuse_address)) == -1) {
+        perror("setsockopt");
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
     // uzdarius klientui rysi, send klaida neturi sustabdyti serverio.
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         perror("signal");
